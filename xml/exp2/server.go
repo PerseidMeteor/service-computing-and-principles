@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+
+	"github.com/beevik/etree"
 )
 
 // struct for xml
@@ -102,18 +104,20 @@ func handleGetWeather(w http.ResponseWriter, r *http.Request) {
 
 	println(string(xmlData))
 
-	// unmarshal XML data
-	var ev Envelope
-	err = xml.Unmarshal(xmlData, &ev)
-	if err != nil {
-		fmt.Println("Error unmarshalling XML data:", err)
-		return
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(xmlData); err != nil {
+		panic(err)
 	}
 
-	fmt.Println("Received city:", ev.Body.Request.CityName)
+	cityName := doc.FindElement("//CityName")
+	if cityName == nil {
+		panic("CityName element not found")
+	}
+
+	city := cityName.Text()
 
 	// 获取天气
-	weather, err := getCityWeather(ev.Body.Request.CityName)
+	weather, err := getCityWeather(city)
 	if err != nil {
 		fmt.Println("Error get city weather:", err)
 		return
