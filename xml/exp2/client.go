@@ -5,7 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+
+	"github.com/beevik/etree"
 )
 
 type Envelope struct {
@@ -27,8 +30,8 @@ type GetWeather struct {
 }
 
 type GetWeatherResponse struct {
-	Temperature float32 `xml:"m:Temperature,omitempty"`
-	Weather     string  `xml:"m:Weather,omitempty"`
+	Temperature string `xml:"m:Temperature,omitempty"`
+	Weather     string `xml:"m:Weather,omitempty"`
 }
 
 func main() {
@@ -42,17 +45,22 @@ func main() {
 		"http://www.w3.org/2001/12/soap-encoding",
 		body}
 
-	data, err := xml.MarshalIndent(env, "  ", "    ")
-
-	fmt.Println("data:", string(data))
+	//生成xml头
+	reqxml := []byte(xml.Header)
+	//生成xml
+	data, err := xml.MarshalIndent(env, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	reqxml = append(reqxml, data...)
 
 	//post xml to server
 	resp, err := http.Post("http://localhost:8081/weather",
 		"application/xml",
-		ioutil.NopCloser(bytes.NewBuffer(data)))
+		ioutil.NopCloser(bytes.NewBuffer(reqxml)))
 
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 	}
 	defer resp.Body.Close()
 
@@ -60,8 +68,26 @@ func main() {
 	content, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 	}
+	fmt.Println("response xml:")
 	fmt.Println(string(content))
 
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(content); err != nil {
+		panic(err)
+	}
+
+	// 获取城市天气
+	weather := doc.FindElement("//Weather")
+	if weather == nil {
+		panic("Weather element not found")
+	}
+	// 获取城市温度
+	temperature := doc.FindElement("//Temperature")
+	if temperature == nil {
+		panic("Temperature element not found")
+	}
+
+	fmt.Printf("\n西安的天气为%s, 温度为%s\n", weather.Text(), temperature.Text())
 }
