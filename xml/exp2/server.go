@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -8,9 +9,49 @@ import (
 	"net/http"
 )
 
-// TODO:make full GetWeather struct
+// struct for xml
+type Envelope struct {
+	XMLName       xml.Name `xml:"soap:Envelope"`
+	Soap          string   `xml:"xmlns:soap,attr"`
+	EncodingStyle string   `xml:"soap:encodingStyle,attr"`
+	Body          Body     `xml:"soap:Body"`
+}
+
+type Body struct {
+	XMLName  xml.Name            `xml:"soap:Body"`
+	N        string              `xml:"xmlns:n,attr"`
+	Response *GetWeatherResponse `xml:"m:GetWeatherResponse,omitempty"`
+	Request  *GetWeather         `xml:"n:GetWeather,omitempty"`
+}
+
 type GetWeather struct {
-	CityName string `xml:"CityName"`
+	CityName string `xml:"CityName,omitempty"`
+}
+
+type GetWeatherResponse struct {
+	Temperature float32 `xml:"m:Temperature,omitempty"`
+	Weather     string  `xml:"m:Weather,omitempty"`
+}
+
+// struct for weather info
+type weatherInfo struct {
+	Status   string `json:"status"`
+	Count    string `json:"count"`
+	Info     string `json:"info"`
+	Infocode string `json:"infocode"`
+	Lives    []live `json:"lives"`
+}
+
+type live struct {
+	Province      string `json:"province"`
+	City          string `json:"city"`
+	Adcode        string `json:"adcode"`
+	Weather       string `json:"weather"`
+	Temperature   string `json:"temperature"`
+	Winddirection string `json:"winddirection"`
+	Windpower     string `json:"windpower"`
+	Humidity      string `json:"humidity"`
+	Reporttime    string `json:"reporttime"`
 }
 
 func main() {
@@ -26,11 +67,31 @@ func main() {
 	}
 }
 
-// TODO:get true weather
+// getCityWeather from gaode API 通过高德地图API获取天气
 func getCityWeather(CityName string) (string, error) {
 
-	return "Sunny", nil
+	//get weather info
+	resp, err := http.Get("https://restapi.amap.com/v3/weather/weatherInfo?city=110101&key=48630e70f3afd36708389c5dd21c60ba")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//decode json
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	wInf := weatherInfo{}
+	err = json.Unmarshal(body, &wInf)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	return wInf.Lives[0].Weather, nil
 }
+
 func handleGetWeather(w http.ResponseWriter, r *http.Request) {
 	// 读取请求体中的XML数据
 	xmlData, err := ioutil.ReadAll(r.Body)
@@ -39,20 +100,20 @@ func handleGetWeather(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 解析XML数据到Person结构体中
-	var gw GetWeather
+	println(string(xmlData))
 
-	err = xml.Unmarshal(xmlData, &gw)
+	// unmarshal XML data
+	var ev Envelope
+	err = xml.Unmarshal(xmlData, &ev)
 	if err != nil {
 		fmt.Println("Error unmarshalling XML data:", err)
 		return
 	}
 
-	// 输出解析后的Person对象
-	fmt.Println("Received city:", gw.CityName)
+	fmt.Println("Received city:", ev.Body.Request.CityName)
 
 	// 获取天气
-	weather, err := getCityWeather(gw.CityName)
+	weather, err := getCityWeather(ev.Body.Request.CityName)
 	if err != nil {
 		fmt.Println("Error get city weather:", err)
 		return

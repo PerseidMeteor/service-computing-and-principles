@@ -8,15 +8,41 @@ import (
 	"net/http"
 )
 
-// TODO:make full GetWeather struct
+type Envelope struct {
+	XMLName       xml.Name `xml:"soap:Envelope"`
+	Soap          string   `xml:"xmlns:soap,attr"`
+	EncodingStyle string   `xml:"soap:encodingStyle,attr"`
+	Body          Body     `xml:"soap:Body"`
+}
+
+type Body struct {
+	XMLName  xml.Name            `xml:"soap:Body"`
+	N        string              `xml:"xmlns:n,attr"`
+	Response *GetWeatherResponse `xml:"m:GetWeatherResponse,omitempty"`
+	Request  *GetWeather         `xml:"n:GetWeather,omitempty"`
+}
+
 type GetWeather struct {
-	CityName string `xml:"CityName"`
+	CityName string `xml:"CityName,omitempty"`
+}
+
+type GetWeatherResponse struct {
+	Temperature float32 `xml:"m:Temperature,omitempty"`
+	Weather     string  `xml:"m:Weather,omitempty"`
 }
 
 func main() {
 
-	werther := GetWeather{CityName: "xian"}
-	data, err := xml.Marshal(werther)
+	request := GetWeather{"西安"}
+
+	body := Body{XMLName: xml.Name{Space: "", Local: "soap:Body"}, N: "http://www.nwpu.edu.cn/soa/xml/test", Request: &request}
+
+	env := Envelope{xml.Name{Space: "", Local: "Envelope"},
+		"http://www.w3.org/2001/12/soap-envelope",
+		"http://www.w3.org/2001/12/soap-encoding",
+		body}
+
+	data, err := xml.MarshalIndent(env, "  ", "    ")
 
 	fmt.Println("data:", string(data))
 
@@ -29,11 +55,7 @@ func main() {
 		fmt.Println(err)
 	}
 	defer resp.Body.Close()
-	// 获取服务器端读到的数据
-	fmt.Println("Status = ", resp.Status)         // 状态
-	fmt.Println("StatusCode = ", resp.StatusCode) // 状态码
-	fmt.Println("Header = ", resp.Header)         // 响应头部
-	fmt.Println("Body = ", resp.Body)             // 响应包体
+
 	//读取body内的内容
 	content, err := ioutil.ReadAll(resp.Body)
 
