@@ -73,7 +73,7 @@ func main() {
 func getCityWeather(CityName string) (GetWeatherResponse, error) {
 
 	//get weather info
-	resp, err := http.Get("https://restapi.amap.com/v3/weather/weatherInfo?city=110101&key=48630e70f3afd36708389c5dd21c60ba")
+	resp, err := http.Get("https://restapi.amap.com/v3/weather/weatherInfo?city=610100&key=48630e70f3afd36708389c5dd21c60ba")
 	if err != nil {
 		log.Fatal(err)
 	}
