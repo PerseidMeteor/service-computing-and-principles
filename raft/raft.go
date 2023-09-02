@@ -99,10 +99,6 @@ type Node struct {
 	matchIndex map[int]int
 }
 
-// NewNode creates a new CM with the given ID, list of peer IDs and
-// server. The ready channel signals the CM that all peers are connected and
-// it's safe to start its state machine. commitChan is going to be used by the
-// CM to send log entries that have been committed by the Raft cluster.
 func NewNode(id int, peerIds []int, server *Server, storage Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Node {
 	cm := new(Node)
 	cm.id = id
@@ -293,14 +289,14 @@ func (node *Node) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesRepl
 			}
 
 			if newEntriesIndex < len(args.Entries) {
-				node.nodeLog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
+				node.nodeLog("inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				node.log = append(node.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				node.nodeLog("... log is now: %v", node.log)
+				node.nodeLog("log is now: %v", node.log)
 			}
 
 			if args.LeaderCommit > node.commitIndex {
 				node.commitIndex = Min(args.LeaderCommit, len(node.log)-1)
-				node.nodeLog("... setting commitIndex=%d", node.commitIndex)
+				node.nodeLog("setting commitIndex=%d", node.commitIndex)
 				node.commitOKChan <- struct{}{}
 			}
 		} else {
@@ -339,12 +335,6 @@ func (node *Node) electionTimeout() time.Duration {
 	}
 }
 
-// runElectionTimer implements an election timer. It should be launched whenever
-// we want to start a timer towards becoming a candidate in a new election.
-//
-// This function is blocking and should be launched in a separate goroutine;
-// it's designed to work for a single (one-shot) election timer, as it exits
-// whenever the CM state changes from follower/candidate or the term changes.
 func (node *Node) runElectionTimer() {
 	timeoutDuration := node.electionTimeout()
 	node.mu.Lock()
@@ -352,11 +342,6 @@ func (node *Node) runElectionTimer() {
 	node.mu.Unlock()
 	node.nodeLog("election timer started (%v), current term is %d", timeoutDuration, termStarted)
 
-	// This loops until either:
-	// - we discover the election timer is no longer needed, or
-	// - the election timer expires and this CM becomes a candidate
-	// In a follower, this typically keeps running in the background for the
-	// duration of the CM's lifetime.
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -375,8 +360,6 @@ func (node *Node) runElectionTimer() {
 			return
 		}
 
-		// Start an election if we haven't heard from a leader or haven't voted for
-		// someone for the duration of the timeout.
 		if elapsed := time.Since(node.electionResetEvent); elapsed >= timeoutDuration {
 			node.startElection()
 			node.mu.Unlock()
@@ -386,8 +369,6 @@ func (node *Node) runElectionTimer() {
 	}
 }
 
-// startElection starts a new election with this CM as a candidate.
-// Expects cm.mu to be locked.
 func (node *Node) startElection() {
 	node.state = Candidate
 	node.currentTerm += 1
@@ -398,7 +379,6 @@ func (node *Node) startElection() {
 
 	votesReceived := 1
 
-	// Send RequestVote RPCs to all other servers concurrently.
 	for _, peerId := range node.peerIds {
 		go func(peerId int) {
 			node.mu.Lock()
@@ -448,7 +428,6 @@ func (node *Node) startElection() {
 }
 
 // becomeFollower makes cm a follower and resets its state.
-// Expects cm.mu to be locked.
 func (node *Node) becomeFollower(term int) {
 	node.nodeLog("becomes Follower with term=%d; log=%v", term, node.log)
 	node.state = Follower
@@ -460,7 +439,6 @@ func (node *Node) becomeFollower(term int) {
 }
 
 // startLeader switches cm into a leader state and begins process of heartbeats.
-// Expects cm.mu to be locked.
 func (node *Node) startLeader() {
 	node.state = Leader
 
@@ -470,9 +448,6 @@ func (node *Node) startLeader() {
 	}
 	node.nodeLog("becomes Leader; term=%d, nextIndex=%v, matchIndex=%v; log=%v", node.currentTerm, node.nextIndex, node.matchIndex, node.log)
 
-	// This goroutine runs in the background and sends AEs to peers:
-	// * Whenever something is sent on triggerAEChan
-	// * ... Or every 50 ms, if no events occur on triggerAEChan
 	go func(heartbeatTimeout time.Duration) {
 		// Immediately send AEs to peers.
 		node.leaderSendAEs()
@@ -611,9 +586,6 @@ func (node *Node) leaderSendAEs() {
 	}
 }
 
-// lastLogIndexAndTerm returns the last log index and the last log entry's term
-// (or -1 if there's no log) for this server.
-// Expects cm.mu to be locked.
 func (node *Node) lastLogIndexAndTerm() (int, int) {
 	if len(node.log) > 0 {
 		lastIndex := len(node.log) - 1
@@ -623,12 +595,6 @@ func (node *Node) lastLogIndexAndTerm() (int, int) {
 	}
 }
 
-// commitChanSender is responsible for sending committed entries on
-// cm.commitChan. It watches newCommitReadyChan for notifications and calculates
-// which new entries are ready to be sent. This method should run in a separate
-// background goroutine; cm.commitChan may be buffered and will limit how fast
-// the client consumes new committed entries. Returns when newCommitReadyChan is
-// closed.
 func (node *Node) commitChanSender() {
 	for range node.commitOKChan {
 		// Find which entries we have to apply.

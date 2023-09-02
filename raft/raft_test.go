@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -21,34 +20,34 @@ func TestCommit(t *testing.T) {
 	origId, _ := rt.CheckCurrentLeader()
 
 	// 提交commit
-	rt.CommitToServer(origId, 5)
-	rt.CommitToServer(origId, 6)
+	rt.CommitToServer(origId, 1)
+	rt.CommitToServer(origId, 2)
 
 	time.Sleep(time.Duration(250) * time.Millisecond)
 
 	// 检查commit是否存在, 以及当前的server数量
-	rt.CheckCommittedWithNServers(6, 10)
+	rt.CheckCommittedWithNServers(2, 10)
 
 	// leader断开连接
 	rt.DisconnectPeer(origId)
 	time.Sleep(time.Duration(10) * time.Millisecond)
 
 	// commit提交到原来的leader节点
-	rt.CommitToServer(origId, 7)
+	rt.CommitToServer(origId, 3)
 	time.Sleep(time.Duration(250) * time.Millisecond)
 
 	// 检查commit是否存在，此处应该不存在
-	rt.CheckNotCommitted(7)
+	rt.CheckNotCommitted(3)
 
 	// 检查当前的leader
 	newLeaderId, _ := rt.CheckCurrentLeader()
 
 	// 提交commit
-	rt.CommitToServer(newLeaderId, 8)
+	rt.CommitToServer(newLeaderId, 4)
 	time.Sleep(time.Duration(250) * time.Millisecond)
 
 	// 检查commit是否存在, 以及当前的server数量
-	rt.CheckCommittedWithNServers(8, 9)
+	rt.CheckCommittedWithNServers(4, 9)
 
 	// 原来断连的leader重新连接
 	rt.ReconnectPeer(origId)
@@ -60,8 +59,8 @@ func TestCommit(t *testing.T) {
 		t.Errorf("got finalLeaderId==origLeaderId==%d, want them different", nextID)
 	}
 
-	// 7的commit不应该提交
-	rt.CheckNotCommitted(7)
+	// 3的commit不应该提交
+	rt.CheckNotCommitted(3)
 
 	// leader再次断连和重连
 	rt.DisconnectPeer(nextID)
@@ -83,7 +82,7 @@ type RaftTest struct {
 	commits [][]CommitEntry
 
 	// connected has a bool per server in cluster, specifying whether this server
-	// is connected to the network 
+	// is connected to the network
 	connected []bool
 
 	// alive has a bool per server in cluster, specifying whether this server is
@@ -142,7 +141,7 @@ func NewRaftTest(t *testing.T, n int) *RaftTest {
 		t:           t,
 	}
 	for i := 0; i < n; i++ {
-		go h.collectCommits(i)
+		go h.gotCommits(i)
 	}
 	return h
 }
@@ -167,7 +166,7 @@ func (rt *RaftTest) Shutdown() {
 
 // DisconnectPeer disconnects a server from all other servers in the cluster.
 func (rt *RaftTest) DisconnectPeer(id int) {
-	logToFile("Disconnect %d", id)
+	log.Printf("Disconnect %d", id)
 	rt.cluster[id].DisconnectAll()
 	for j := 0; j < rt.n; j++ {
 		if j != id {
@@ -179,7 +178,7 @@ func (rt *RaftTest) DisconnectPeer(id int) {
 
 // ReconnectPeer connects a server to all other servers in the cluster.
 func (rt *RaftTest) ReconnectPeer(id int) {
-	logToFile("Reconnect %d", id)
+	log.Printf("Reconnect %d", id)
 	for j := 0; j < rt.n; j++ {
 		if j != id && rt.alive[j] {
 			if err := rt.cluster[id].ConnectToPeer(j, rt.cluster[j].GetListenAddr()); err != nil {
@@ -312,26 +311,19 @@ func (rt *RaftTest) CommitToServer(serverId int, cmd interface{}) bool {
 	return rt.cluster[serverId].node.Submit(cmd)
 }
 
-func logToFile(format string, a ...interface{}) {
-	format = "[TEST] " + format
-	log.Printf(format, a...)
-}
-
-// collectCommits reads channel commitChans[i] and adds all received entries
-// to the corresponding commits[i]. It's blocking and should be run in a
-// separate goroutine. It returns when commitChans[i] is closed.
-func (rt *RaftTest) collectCommits(i int) {
+func (rt *RaftTest) gotCommits(i int) {
 	for c := range rt.commitChans[i] {
 		rt.mu.Lock()
-		logToFile("collectCommits(%d) got %+v", i, c)
+		log.Printf("Commits(%d) got %+v", i, c)
 		rt.commits[i] = append(rt.commits[i], c)
 		rt.mu.Unlock()
 	}
 }
 
 func init() {
+	// output time firstly
+	log.SetPrefix("time: ")
 	log.SetFlags(log.Ltime | log.Lmicroseconds)
 	seed := time.Now().UnixNano()
-	fmt.Println("seed", seed)
 	rand.Seed(seed)
 }

@@ -6,12 +6,9 @@ package raft
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/rpc"
-	"os"
 	"sync"
-	"time"
 )
 
 // Server container for a Raft Node. Exposes Raft to the network
@@ -62,7 +59,7 @@ func (s *Server) Serve() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("[%v] listening port %s", s.serverId, s.listener.Addr())
+	log.Printf("server[%v] is listening port %s", s.serverId, s.listener.Addr())
 	s.mu.Unlock()
 
 	s.wg.Add(1)
@@ -153,38 +150,4 @@ func (s *Server) Call(id int, serviceMethod string, args interface{}, reply inte
 	}
 }
 
-type RPCProxy struct {
-	node *Node
-}
 
-func (rpp *RPCProxy) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
-	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-		dice := rand.Intn(10)
-		if dice == 9 {
-			rpp.node.nodeLog("drop RequestVote")
-			return fmt.Errorf("RPC failed")
-		} else if dice == 8 {
-			rpp.node.nodeLog("delay RequestVote")
-			time.Sleep(75 * time.Millisecond)
-		}
-	} else {
-		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	}
-	return rpp.node.RequestVote(args, reply)
-}
-
-func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
-	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-		dice := rand.Intn(10)
-		if dice == 9 {
-			rpp.node.nodeLog("drop AppendEntries")
-			return fmt.Errorf("RPC failed")
-		} else if dice == 8 {
-			rpp.node.nodeLog("delay AppendEntries")
-			time.Sleep(75 * time.Millisecond)
-		}
-	} else {
-		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	}
-	return rpp.node.AppendEntries(args, reply)
-}
